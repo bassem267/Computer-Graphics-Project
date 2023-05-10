@@ -299,6 +299,7 @@ void DrawCircleModifiedMidpoint(HDC hdc,int xc,int yc,int radius,COLORREF c)
     int c2=5-2*radius;
     Draw8Points(hdc,xc,yc,x,y,c);
     Count+=8;
+
     while(x<y)
     {
         if(d1<0)
@@ -317,6 +318,7 @@ void DrawCircleModifiedMidpoint(HDC hdc,int xc,int yc,int radius,COLORREF c)
         Draw8Points(hdc,xc,yc,x,y,c);
         Count+=8;
     }
+
     SaveArrColorPoints[SC++]=c;
     SaveArrNoOfPoints[SN++]=Count;
 }
@@ -521,6 +523,7 @@ void DrawEllipsePolar(HDC hdc, int xc, int yc, int r1, int r2, COLORREF c)
     double x=r1;
     double y=0;
     double theta=0;
+
     for( ; x*r2*r2>y*r1*r1; theta+=dtheta)
     {
         Draw4Points(hdc,xc,yc,Round(x),Round(y),c);
@@ -530,6 +533,7 @@ void DrawEllipsePolar(HDC hdc, int xc, int yc, int r1, int r2, COLORREF c)
     }
     x=0;
     y=r2;
+
     for( ; x*r2*r2<y*r1*r1; theta+=dtheta)
     {
         Draw4Points(hdc,xc,yc,Round(x),Round(y),c);
@@ -541,64 +545,46 @@ void DrawEllipsePolar(HDC hdc, int xc, int yc, int r1, int r2, COLORREF c)
     SaveArrNoOfPoints[SN++]=Count;
 }
 // ellipse Mid-point
-void DrawEllipseMidPoint(HDC hdc, int xc, int yc, int r1, int r2, COLORREF c)
+void DrawEllipseMidPoint(HDC hdc, int xc, int yc, int rx, int ry,COLORREF c)
 {
-    float dx, dy, d1, d2, x, y;
-    x = 0;
-    y = r2;
-    Draw4Points(hdc, xc, yc, r1, r2, c);
-    // Initial decision parameter of region 1
-    d1 = (r2 * r2) - (r1 * r1 * r2) + (0.25 * r1 * r1);
-    dx = 2 * r2 * r2 * x;
-    dy = 2 * r1 * r1 * y;
+    int x = 0;
+    int y = ry;
+    int p1 = pow(ry, 2) - pow(rx, 2) * ry + pow(rx, 2) / 4;
 
-    // For region 1
-    while (dx < dy)
+    while (2 * pow(ry, 2) * x <= 2 * pow(rx, 2) * y)
     {
-        // Checking and updating value of
-        // decision parameter based on algorithm
-        if (d1 < 0)
+        Draw4Points(hdc, xc, yc, x, y, c);
+
+        if (p1 < 0)
         {
             x++;
-            dx = dx + (2 * r2 * r2);
-            d1 = d1 + dx + (r2 * r2);
+            p1 += 2 * pow(ry, 2) * x + pow(ry, 2);
         }
         else
         {
             x++;
             y--;
-            dx = dx + (2 * r2 * r2);
-            dy = dy - (2 * r1 * r1);
-            d1 = d1 + dx - dy + (r2 * r2);
+            p1 += 2 * pow(ry, 2) * x - 2 * pow(rx, 2) * y + pow(ry, 2);
         }
-        Draw4Points(hdc, xc, yc, r1, r2, c);
     }
 
-    // Decision parameter of region 2
-    d2 = ((r2 * r2) * ((x + 0.5) * (x + 0.5))) +
-         ((r1 * r1) * ((y - 1) * (y - 1))) -
-         (r1 * r1 * r2 * r2);
+    int p2 = pow(ry, 2) * pow(x + 0.5, 2) + pow(rx, 2) * pow(y - 1, 2) - pow(rx, 2) * pow(ry, 2);
 
-    // Plotting points of region 2
     while (y >= 0)
     {
-        // Checking and updating parameter
-        // value based on algorithm
-        if (d2 > 0)
+        Draw4Points(hdc, xc, yc, x, y, c);
+
+        if (p2 > 0)
         {
             y--;
-            dy = dy - (2 * r1 * r1);
-            d2 = d2 + (r1 * r1) - dy;
+            p2 -= 2 * pow(rx, 2) * y + pow(rx, 2);
         }
         else
         {
-            y--;
             x++;
-            dx = dx + (2 * r2 * r2);
-            dy = dy - (2 * r1 * r1);
-            d2 = d2 + dx - dy + (r1 * r1);
+            y--;
+            p2 += 2 * pow(ry, 2) * x - 2 * pow(rx, 2) * y + pow(rx, 2);
         }
-        Draw4Points(hdc, xc, yc, r1, r2, c);
     }
 }
 
@@ -930,6 +916,11 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
             instruction = 40;
             MessageBeep(MB_OK);
             break;
+        case 41:
+            MessageBox(hwnd, "TO Draw A Line: Drag the Start point to the end point of line With Left Click \n"
+                       "TO Draw A Circle: press left click to define the center and release to the edge of the circle you like"
+                       , "How To Draw", MB_OK);
+            break;
         }
     }
 
@@ -1092,23 +1083,24 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
 
         // ellipse drawing
         case 18:
-            a = pow(pow(xmid - xstart, 2) + pow(ymid - ystart, 2) * 1.0, 0.5);
-            b = pow(pow(xend - xstart, 2) + pow(yend - ystart, 2) * 1.0, 0.5);
+            a = pow(pow(xend - xstart, 2) + pow(yend - ystart, 2) * 1.0, 0.5);
+            b = pow(pow(xmid - xstart, 2) + pow(ymid - ystart, 2) * 1.0, 0.5);
             DrawEllipseDirect(hdc, xstart, ystart, a, b, c);
             cout<<"Ellipse Drawn"<<endl;
             break;
         case 19:
-            a = pow(pow(xmid - xstart, 2) + pow(ymid - ystart, 2) * 1.0, 0.5);
-            b = pow(pow(xend - xstart, 2) + pow(yend - ystart, 2) * 1.0, 0.5);
+            a = pow(pow(xend - xstart, 2) + pow(yend - ystart, 2) * 1.0, 0.5);
+            b = pow(pow(xmid - xstart, 2) + pow(ymid - ystart, 2) * 1.0, 0.5);
             DrawEllipsePolar(hdc, xstart, ystart, a, b, c);
             cout<<"Ellipse Drawn"<<endl;
             break;
         case 20:
-            a = pow(pow(xmid - xstart, 2) + pow(ymid - ystart, 2) * 1.0, 0.5);
-            b = pow(pow(xend - xstart, 2) + pow(yend - ystart, 2) * 1.0, 0.5);
+            a = pow(pow(xend - xstart, 2) + pow(yend - ystart, 2) * 1.0, 0.5);
+            b = pow(pow(xmid - xstart, 2) + pow(ymid - ystart, 2) * 1.0, 0.5);
             DrawEllipseMidPoint(hdc, xstart, ystart, a, b, c);
             cout<<"Ellipse Drawn"<<endl;
             break;
+
         // cardinal spinal curve
         case 21:
             a = pow(pow(xmid - xstart, 2) + pow(ymid - ystart, 2) * 1.0, 0.5);
