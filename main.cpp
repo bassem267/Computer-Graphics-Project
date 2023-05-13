@@ -14,14 +14,75 @@
 #include <sstream>
 #include <vector>
 #include <stack>
+#include <list>
+#include <algorithm>
+#include <string>
+
+#define MAXINT 1e6
+#define MAXENTRIES 600
 
 using namespace std;
 
-//for load, save functions
-static int SaveArrPoints[900000];
-static int SaveArrNoOfPoints[900000];
-static COLORREF SaveArrColorPoints[900000];
-static int SP=0,SN=0,SC=0;
+// for save function
+std::vector<int> AllPointsSaved;
+
+// save function
+void saveFunctionPoints(int x, int y, COLORREF ha)
+{
+    AllPointsSaved.push_back(x);
+    AllPointsSaved.push_back(y);
+    AllPointsSaved.push_back(ha);
+}
+
+void SaveToFile(const vector<int>& vec, const char* filename) {
+  ofstream outfile(filename, ios::binary);
+  outfile.write(reinterpret_cast<const char*>(&vec[0]), vec.size() * sizeof(int));
+
+}
+
+void SaveFunction(const char* filename){
+    SaveToFile(AllPointsSaved, filename);
+    AllPointsSaved.clear();
+}
+
+vector<int> readVectorFromFile(const char* filename) {
+  ifstream infile(filename, ios::binary);
+  infile.seekg(0, ios::end);
+  int filesize = infile.tellg();
+  infile.seekg(0, ios::beg);
+  vector<int> vec(filesize / sizeof(int));
+  infile.read(reinterpret_cast<char*>(&vec[0]), filesize);
+  return vec;
+}
+
+void loadFunction(HDC hdc)
+{
+    vector<int> LoadedPoints = readVectorFromFile("points.txt");
+
+    int xload, yload, cload;
+    int haha = 0;
+
+
+    for (int i = 0 ; i < LoadedPoints.size() ; i++)
+    {
+        if( haha == 0)
+        {
+            xload = LoadedPoints[i];
+            haha++;
+        }
+        else if ( haha == 1)
+        {
+            yload = LoadedPoints[i];
+            haha++;
+        }
+        else if ( haha == 2)
+        {
+            cload = LoadedPoints[i];
+            haha = 0;
+            SetPixel(hdc, xload, yload, cload);
+        }
+    }
+}
 
 
 // DDA
@@ -31,25 +92,22 @@ int Round(double x)
 }
 void DrawLineDDA(HDC hdc,int xs,int ys,int xe,int ye,COLORREF color)
 {
-    int Count=0;
     int dx=xe-xs;
     int dy=ye-ys;
     SetPixel(hdc,xs,ys,color);
-    SaveArrPoints[SP++]=xs;
-    SaveArrPoints[SP++]=ys;
-    Count++;
+    saveFunctionPoints(xs, ys, color);
+
     if(abs(dx)>=abs(dy))
     {
         int x=xs,xinc= dx>0?1:-1;
-        double y=ys,yinc=(double)dy/dx*xinc;
+        double y = ys,yinc=(double)dy/dx*xinc;
         while(x!=xe)
         {
             x+=xinc;
             y+=yinc;
-            SetPixel(hdc,x,Round(y),color);
-            Count++;
-            SaveArrPoints[SP++]=x;
-            SaveArrPoints[SP++]=Round(y);
+            SetPixel(hdc, x, Round(y), color);
+
+            saveFunctionPoints(x, Round(y), color);
         }
     }
     else
@@ -60,37 +118,32 @@ void DrawLineDDA(HDC hdc,int xs,int ys,int xe,int ye,COLORREF color)
         {
             x+=xinc;
             y+=yinc;
-            SetPixel(hdc,Round(x),y,color);
-            Count++;
-            SaveArrPoints[SP++]=Round(x);
-            SaveArrPoints[SP++]=y;
+            SetPixel(hdc, Round(x), y, color);
+            saveFunctionPoints(Round(x), y, color);
         }
     }
-    SaveArrColorPoints[SC++]=color;
-    SaveArrNoOfPoints[SN++]=Count;
 }
 
 //Mid-Point
 void PlotLineLow(HDC hdc,int x0,int y0,int x1, int y1,COLORREF c)
 {
-    int Count=0;
     int dx = x1 - x0;
     int dy = y1 - y0;
     int yi = 1;
+
     if (dy < 0)
     {
         yi = -1;
         dy = -dy;
     }
+
     int D = (2 * dy) - dx;
     int  y = y0;
 
     for ( int x=x0; x<x1; x++)
     {
-        SetPixel(hdc,x,y,c);
-        SaveArrPoints[SP++]=x;
-        SaveArrPoints[SP++]=y;
-        Count++;
+        SetPixel(hdc, x, y, c);
+        saveFunctionPoints(x, y, c);
         if (D > 0)
         {
             y = y + yi;
@@ -99,12 +152,10 @@ void PlotLineLow(HDC hdc,int x0,int y0,int x1, int y1,COLORREF c)
         else
             D = D + 2*dy;
     }
-    SaveArrColorPoints[SC++]=c;
-    SaveArrNoOfPoints[SN++]=Count;
 }
+
 void PlotLineHigh(HDC hdc,int x0, int y0,int x1, int y1,COLORREF c)
 {
-    int Count=0;
     int dx = x1 - x0;
     int dy = y1 - y0;
     int xi = 1;
@@ -119,9 +170,7 @@ void PlotLineHigh(HDC hdc,int x0, int y0,int x1, int y1,COLORREF c)
     for (int y=y0; y<y1; y++)
     {
         SetPixel(hdc,x,y,c);
-        SaveArrPoints[SP++]=x;
-        SaveArrPoints[SP++]=y;
-        Count++;
+        saveFunctionPoints(x, y, c);
         if(D > 0)
         {
             x = x + xi;
@@ -130,24 +179,43 @@ void PlotLineHigh(HDC hdc,int x0, int y0,int x1, int y1,COLORREF c)
         else
             D = D + 2*dx;
     }
-    SaveArrColorPoints[SC++]=c;
-    SaveArrNoOfPoints[SN++]=Count;
 }
-void DrawLineMidPoint(HDC hdc,int x0,int y0,int x1,int y1,COLORREF c)
+
+void swapp (int &x1,int &y1,int &x2,int &y2)
 {
-    if (abs(y1 - y0) < abs(x1 - x0))
+    int temp =x1;
+    x1=x2;
+    x2=temp;
+    temp =y1;
+    y1=y2;
+    y2=temp;
+}
+
+void DrawLineMidPoint(HDC hdc,int x1,int y1,int x2,int y2,COLORREF c)
+{
+    int dx = x2-x1;
+    int dy = y2-y1;
+    if (x1>x2) swapp(x1,y1,x2,y2);
+    int x=x1, y =y1;
+    SetPixel(hdc, x, y, c);
+    saveFunctionPoints(x, y, c);
+    int d = dx-2*dy, d1=2*dx -2*dy, d2 = -2*dy ;
+
+    while (x<x2)
     {
-        if (x0 > x1)
-            PlotLineLow(hdc,x1, y1, x0, y0,c);
+        if(d<=0)
+        {
+            d+=d1;
+            x++;
+            y++;
+        }
         else
-            PlotLineLow(hdc,x0, y0, x1, y1,c);
-    }
-    else
-    {
-        if (y0 > y1)
-            PlotLineHigh(hdc,x1, y1, x0, y0,c);
-        else
-            PlotLineHigh(hdc,x0, y0, x1, y1,c);
+        {
+            d+=d2;
+            x++ ;
+        }
+        SetPixel(hdc,x, y, c);
+        saveFunctionPoints(x, y, c);
     }
 }
 
@@ -157,119 +225,102 @@ void DrawLineParametric(HDC hdc,int x1,int y1,int x2, int y2,COLORREF c)
     int Count=0;
     double dx=x2-x1;
     double dy=y2-y1;
-    SetPixel(hdc,x1,y1,c);
-    SaveArrPoints[SP++]=x1;
-    SaveArrPoints[SP++]=y1;
-    Count++;
+    SetPixel(hdc, x1, y1, c);
+    saveFunctionPoints(x1, y1, c);
+
     for(double t=0; t<1; t+=0.00001)
     {
         int x=x1+t*dx;
         int y=y1+t*dy;
         SetPixel(hdc,Round(x),Round(y),c);
-        SaveArrPoints[SP++]=Round(x);
-        SaveArrPoints[SP++]=Round(y);
-        Count++;
+
+        saveFunctionPoints(Round(x), Round(y), c);
     }
-    SaveArrColorPoints[SC++]=c;
-    SaveArrNoOfPoints[SN++]=Count;
+
 }
 
 //Circle Direct
 void Draw8Points(HDC hdc,int xc,int yc,int a,int b,COLORREF color)
 {
     SetPixel(hdc,xc+a,yc+b,color);
-    SaveArrPoints[SP++]=xc+a;
-    SaveArrPoints[SP++]=yc+b;
+    saveFunctionPoints(xc+a, yc+b, color);
 
     SetPixel(hdc,xc+a,yc-b,color);
-    SaveArrPoints[SP++]=xc+a;
-    SaveArrPoints[SP++]=yc-b;
+    saveFunctionPoints(xc+a, yc-b, color);
 
     SetPixel(hdc,xc-a,yc+b,color);
-    SaveArrPoints[SP++]=xc-a;
-    SaveArrPoints[SP++]=yc+b;
+    saveFunctionPoints(xc-a, yc+b, color);
 
     SetPixel(hdc,xc-a,yc-b,color);
-    SaveArrPoints[SP++]=xc-a;
-    SaveArrPoints[SP++]=yc-b;
+    saveFunctionPoints(xc-a, yc-b, color);
 
     SetPixel(hdc,xc+b,yc+a,color);
-    SaveArrPoints[SP++]=xc+b;
-    SaveArrPoints[SP++]=yc+a;
+    saveFunctionPoints(xc+b, yc+a, color);
 
     SetPixel(hdc,xc+b,yc-a,color);
-    SaveArrPoints[SP++]=xc+b;
-    SaveArrPoints[SP++]=yc-a;
+    saveFunctionPoints(xc+b, yc-a, color);
 
     SetPixel(hdc,xc-b,yc+a,color);
-    SaveArrPoints[SP++]=xc-b;
-    SaveArrPoints[SP++]=yc+a;
+    saveFunctionPoints(xc-b, yc+a, color);
 
     SetPixel(hdc,xc-b,yc-a,color);
-    SaveArrPoints[SP++]=xc-b;
-    SaveArrPoints[SP++]=yc-a;
+    saveFunctionPoints(xc-b, yc-a, color);
 }
 
 void DrawCircleDirect(HDC hdc,int xc,int yc,double R,COLORREF color)
 {
-    int Count=0;
-    double y=R;//y=0
-    for(int x=0; x<y; x++)//x=R; x>0; x-- you choose your own octant
+    double y = R;
+
+    for(int x=0; x<y ; x++)
     {
         Draw8Points(hdc,xc,yc,x,y,color);
-        Count+=8;
-        y=Round(sqrt(R*R-x*x));
+
+        y = Round(sqrt(R*R-x*x));
     }
-    SaveArrColorPoints[SC++]=color;
-    SaveArrNoOfPoints[SN++]=Count;
+
 }
 //circle polar direct algorithm
 void DrawCirclePolar(HDC hdc,int xc,int yc,double R,COLORREF color)
 {
-    int Count=0;
+
     double y=0;
     double theta=0;
     double dtheta=1.0/R;
+
     for(int x=R; x>y ; theta+=dtheta)
     {
         Draw8Points(hdc,xc,yc,Round(x),Round(y),color);
-        Count+=8;
         x=R*cos(theta);
         y=R*sin(theta);
     }
-    SaveArrColorPoints[SC++]=color;
-    SaveArrNoOfPoints[SN++]=Count;
+
 }
 //circle polar iterative algorithm
 void DrawCirclePolarIterative(HDC hdc,double xc,double yc,double radius,COLORREF c)
 {
-    int Count=0;
     double dtheta=1.0/radius;
     double cdtheta=cos(dtheta);
     double sdtheta=sin(dtheta);
     double x=0;
     double y=radius;
     Draw8Points(hdc,xc,yc,x,y,c);
-    Count+=8;
+
     while(x<y)
     {
         double x1=x*cdtheta-y*sdtheta;
         y=x*sdtheta+y*cdtheta;
         x=x1;
         Draw8Points(hdc,xc,yc,Round(x),Round(y),c);
-        Count+=8;
     }
-    SaveArrColorPoints[SC++]=c;
-    SaveArrNoOfPoints[SN++]=Count;
 }
 //circle mid-point
 void DrawCircleMidpoint(HDC hdc,int xc,int yc,int radius,COLORREF c)
 {
-    int x=0,Count=0;
-    int y=radius;
-    int d1=1-radius;
+    int x = 0;
+    int y = radius;
+    int d1 = 1-radius;
     Draw8Points(hdc,xc,yc,x,y,c);
-    Count+=8;
+
     while(x<y)
     {
         if(d1<0)
@@ -284,21 +335,19 @@ void DrawCircleMidpoint(HDC hdc,int xc,int yc,int radius,COLORREF c)
         }
         x++;
         Draw8Points(hdc,xc,yc,x,y,c);
-        Count+=8;
     }
-    SaveArrColorPoints[SC++]=c;
-    SaveArrNoOfPoints[SN++]=Count;
+
 }
 //circle modified midpoint
 void DrawCircleModifiedMidpoint(HDC hdc,int xc,int yc,int radius,COLORREF c)
 {
-    int x=0,Count=0;
+    int x=0;
     int y=radius;
     int d1=1-radius;
     int c1=3;
     int c2=5-2*radius;
     Draw8Points(hdc,xc,yc,x,y,c);
-    Count+=8;
+
 
     while(x<y)
     {
@@ -316,11 +365,9 @@ void DrawCircleModifiedMidpoint(HDC hdc,int xc,int yc,int radius,COLORREF c)
         c1+=2;
         x++;
         Draw8Points(hdc,xc,yc,x,y,c);
-        Count+=8;
+
     }
 
-    SaveArrColorPoints[SC++]=c;
-    SaveArrNoOfPoints[SN++]=Count;
 }
 
 // the quarter circle filling
@@ -383,56 +430,49 @@ void DrawPartCircle(HDC hdc,int xc,int yc,int a,int b,int Quarter, COLORREF colo
     if( Quarter == 1)
     {
         SetPixel(hdc,xc+a,yc-b,color);
-        SaveArrPoints[SP++]=xc+a;
-        SaveArrPoints[SP++]=yc-b;
+        saveFunctionPoints(xc+a, yc-b, color);
 
         SetPixel(hdc,xc+b,yc-a,color);
-        SaveArrPoints[SP++]=xc+b;
-        SaveArrPoints[SP++]=yc-a;
+        saveFunctionPoints(xc+b, yc-a, color);
+
     }
 
     else if( Quarter == 2)
     {
         SetPixel(hdc,xc-a,yc-b,color);
-        SaveArrPoints[SP++]=xc-a;
-        SaveArrPoints[SP++]=yc-b;
+        saveFunctionPoints(xc-a, yc-b, color);
 
         SetPixel(hdc,xc-b,yc-a,color);
-        SaveArrPoints[SP++]=xc-b;
-        SaveArrPoints[SP++]=yc-a;
+        saveFunctionPoints(xc-b, yc-a, color);
     }
 
     else if( Quarter == 3)
     {
         SetPixel(hdc,xc-a,yc+b,color);
-        SaveArrPoints[SP++]=xc-a;
-        SaveArrPoints[SP++]=yc+b;
+        saveFunctionPoints(xc-a, yc+b, color);
 
         SetPixel(hdc,xc-b,yc+a,color);
-        SaveArrPoints[SP++]=xc-b;
-        SaveArrPoints[SP++]=yc+a;
+        saveFunctionPoints(xc-b, yc+a, color);
     }
     else
     {
         SetPixel(hdc,xc+a,yc+b,color);
-        SaveArrPoints[SP++]=xc+a;
-        SaveArrPoints[SP++]=yc+b;
+        saveFunctionPoints(xc+a, yc+b, color);
 
         SetPixel(hdc,xc+b,yc+a,color);
-        SaveArrPoints[SP++]=xc+b;
-        SaveArrPoints[SP++]=yc+a;
+        saveFunctionPoints(xc+b, yc+a, color);
     }
 }
 
 void DrawCircleModifiedForFilling(HDC hdc,int xc,int yc,int radius, int Quarter, COLORREF c)
 {
-    int x=0,Count=0;
+    int x=0;
     int y=radius;
     int d1=1-radius;
     int c1=3;
     int c2=5-2*radius;
     DrawPartCircle(hdc, xc, yc, x, y, Quarter, c);
-    Count+=2;
+
     while(x<y)
     {
         if(d1<0)
@@ -449,10 +489,8 @@ void DrawCircleModifiedForFilling(HDC hdc,int xc,int yc,int radius, int Quarter,
         c1+=2;
         x++;
         DrawPartCircle(hdc, xc, yc, x, y, Quarter, c);
-        Count+=2;
+
     }
-    SaveArrColorPoints[SC++]=c;
-    SaveArrNoOfPoints[SN++]=Count;
 }
 
 
@@ -470,17 +508,16 @@ void DrawCircleWithCircles(HDC hdc,int xc,int yc,int radius,int Quarter,COLORREF
 void Draw4Points(HDC hdc, int xc, int yc, int a, int b, COLORREF c )
 {
     SetPixel(hdc,xc+a,yc+b,c);
-    SaveArrPoints[SP++]=xc+a;
-    SaveArrPoints[SP++]=yc+b;
+    saveFunctionPoints(xc+a, yc+b, c);
+
     SetPixel(hdc,xc+a,yc-b,c);
-    SaveArrPoints[SP++]=xc+a;
-    SaveArrPoints[SP++]=yc-b;
+    saveFunctionPoints(xc+a, yc-b, c);
+
     SetPixel(hdc,xc-a,yc+b,c);
-    SaveArrPoints[SP++]=xc-a;
-    SaveArrPoints[SP++]=yc+b;
+    saveFunctionPoints(xc-a, yc+b, c);
+
     SetPixel(hdc,xc-a,yc-b,c);
-    SaveArrPoints[SP++]=xc-a;
-    SaveArrPoints[SP++]=yc-b;
+    saveFunctionPoints(xc-a, yc-b, c);
 }
 int Max(int r1,int r2)
 {
@@ -492,33 +529,30 @@ int Max(int r1,int r2)
 // ellipse direct
 void DrawEllipseDirect(HDC hdc, int xc, int yc, int r1, int r2, COLORREF c)
 {
-    int Count=4;
     double x=0;
     double y=r2;
     Draw4Points(hdc,xc,yc,x,y,c);
+
     while(x*r2*r2<y*r1*r1)
     {
         x++;
         y=sqrt(1-(x*x)/(r1*r1))*r2;
         Draw4Points(hdc,xc,yc,x,Round(y),c);
-        Count+=4;
     }
+
     x=r1;
     y=0;
+
     while(y*r1*r1<x*r2*r2)
     {
         y++;
         x=sqrt(1-(y*y)/(r2*r2))*r1;
         Draw4Points(hdc,xc,yc,Round(x),y,c);
-        Count+=4;
     }
-    SaveArrColorPoints[SC++]=c;
-    SaveArrNoOfPoints[SN++]=Count;
 }
 //ellipse Polar drawing
 void DrawEllipsePolar(HDC hdc, int xc, int yc, int r1, int r2, COLORREF c)
 {
-    int Count=0;
     double dtheta=1.0/Max(r1,r2);
     double x=r1;
     double y=0;
@@ -527,9 +561,8 @@ void DrawEllipsePolar(HDC hdc, int xc, int yc, int r1, int r2, COLORREF c)
     for( ; x*r2*r2>y*r1*r1; theta+=dtheta)
     {
         Draw4Points(hdc,xc,yc,Round(x),Round(y),c);
-        Count+=4;
-        x=(r1*cos(theta));
-        y=(r2*sin(theta));
+        x = (r1*cos(theta));
+        y = (r2*sin(theta));
     }
     x=0;
     y=r2;
@@ -537,12 +570,10 @@ void DrawEllipsePolar(HDC hdc, int xc, int yc, int r1, int r2, COLORREF c)
     for( ; x*r2*r2<y*r1*r1; theta+=dtheta)
     {
         Draw4Points(hdc,xc,yc,Round(x),Round(y),c);
-        Count+=4;
-        x=(r1*cos(theta));
-        y=(r2*sin(theta));
+        x = (r1*cos(theta));
+        y = (r2*sin(theta));
     }
-    SaveArrColorPoints[SC++]=c;
-    SaveArrNoOfPoints[SN++]=Count;
+
 }
 // ellipse Mid-point
 void DrawEllipseMidPoint(HDC hdc, int xc, int yc, int rx, int ry,COLORREF c)
@@ -621,13 +652,164 @@ void NRFloodFill(HDC hdc,int x,int y,COLORREF Cb,COLORREF Cf)
         COLORREF c = GetPixel(hdc, v.x, v.y);
         if(c==Cb || c==Cf)continue;
 
-        SetPixel(hdc,v.x,v.y,Cf);
+        SetPixel(hdc, v.x, v.y, Cf);
         S.push(Vertex(v.x+1,v.y));
         S.push(Vertex(v.x-1,v.y));
         S.push(Vertex(v.x,v.y+1));
         S.push(Vertex(v.x,v.y-1));
     }
 }
+
+// convex filling
+
+void swap (POINT &a,POINT &b)
+{
+    POINT tmp=a;
+    a=b;
+    b=tmp;
+}
+
+struct Entry
+{
+    int xmin, xmax;
+};
+
+void InitEntries(Entry table[])
+{
+    for (int i = 0; i < MAXENTRIES; i++)
+    {
+        table[i].xmin = MAXINT;
+        table[i].xmax = -MAXINT;
+    }
+}
+
+void ScanEdge(POINT v1, POINT v2, Entry table[])
+{
+    if (v1.y == v2.y)
+        return;
+    if (v1.y > v2.y)
+        swap(v1, v2);
+    double minv = (double)(v2.x - v1.x) / (v2.y - v1.y);
+    double x = v1.x;
+    int y = v1.y;
+    while (y < v2.y)
+    {
+        if (x < table[y].xmin) table[y].xmin = (int)ceil(x);
+        if (x > table[y].xmax) table[y].xmax = (int)floor(x);
+        y++;
+        x += minv;
+    }
+}
+
+void DrawScanLines(HDC hdc, Entry table[], COLORREF color)
+{
+    for (int y = 0; y < MAXENTRIES; y++)
+    {
+        if (table[y].xmin < table[y].xmax)
+        {
+            for (int x = table[y].xmin; x <= table[y].xmax; x++)
+            {
+                SetPixel(hdc, x, y, color);
+                saveFunctionPoints(x, y, color);
+            }
+        }
+    }
+}
+
+void ConvexFill(HDC hdc, POINT p[], int n, COLORREF color)
+{
+    Entry *table = new Entry[MAXENTRIES];
+    InitEntries(table);
+    POINT v1 = p[n - 1];
+    for (int i = 0; i < n; i++)
+    {
+        POINT v2 = p[i];
+        ScanEdge(v1, v2, table);
+        v1 = p[i];
+    }
+    DrawScanLines(hdc, table, color);
+    delete[] table;
+}
+
+// GeneralFill
+struct EdgeRec
+{
+    double x;
+    double minv;
+    int ymax;
+    bool operator<(EdgeRec r)
+    {
+        return x<r.x;
+    }
+};
+typedef list<EdgeRec> EdgeList;
+
+EdgeRec InitEdgeRec(POINT& v1,POINT& v2)
+{
+    if(v1.y>v2.y)swap(v1,v2);
+    EdgeRec rec;
+    rec.x=v1.x;
+    rec.ymax=v2.y;
+    rec.minv=(double)(v2.x-v1.x)/(v2.y-v1.y);
+    return rec;
+}
+
+
+void InitEdgeTable(POINT *polygon,int n,EdgeList table[])
+{
+    POINT v1=polygon[n-1];
+    for(int i=0; i<n; i++)
+    {
+        POINT v2=polygon[i];
+        if(v1.y==v2.y)
+        {
+            v1=v2;
+            continue;
+        }
+        EdgeRec rec=InitEdgeRec(v1, v2);
+        table[v1.y].push_back(rec);
+        v1=polygon[i];
+    }
+}
+
+void GeneralPolygonFill(HDC hdc,POINT *polygon,int n,COLORREF c)
+{
+    EdgeList *table=new EdgeList [MAXENTRIES];
+    InitEdgeTable(polygon,n,table);
+    int y=0;
+
+    while(y<MAXENTRIES && table[y].size()==0)
+        y++;
+    if( y == MAXENTRIES)
+        return;
+
+    EdgeList ActiveList=table[y];
+
+    while (ActiveList.size()>0)
+    {
+        ActiveList.sort();
+        for(EdgeList::iterator it=ActiveList.begin(); it!=ActiveList.end(); it++)
+        {
+            int x1=(int)ceil(it->x);
+            it++;
+            int x2=(int)floor(it->x);
+            for(int x=x1; x<=x2; x++){
+                SetPixel(hdc,x,y,c);
+                saveFunctionPoints(x, y, c);
+            }
+        }
+        y++;
+        EdgeList::iterator it=ActiveList.begin();
+        while(it!=ActiveList.end())
+            if(y==it->ymax) it=ActiveList.erase(it);
+            else it++;
+        for(EdgeList::iterator it=ActiveList.begin(); it!=ActiveList.end(); it++)
+            it->x+=it->minv;
+        ActiveList.insert(ActiveList.end(),table[y].begin(),table[y].end());
+    }
+    delete[] table;
+}
+
 /*  Declare Windows procedure  */
 LRESULT CALLBACK WindowProcedure (HWND, UINT, WPARAM, LPARAM);
 
@@ -698,7 +880,9 @@ static int xstart, ystart, xmid, ymid, xend, yend;
 static int instruction = 0;
 double r, a, b;
 COLORREF c = RGB(0, 0, 0);
-int count = 0;
+static int counter = 0;
+POINT p[5];
+POINT pTemp;
 
 /*  This function is called by the Windows function DispatchMessage()  */
 PAINTSTRUCT ps;
@@ -773,13 +957,15 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
         // filling
         case 13:
             instruction = 13;
+            counter = 0;
             MessageBeep(MB_OK);
-            cout<<"Circle Modified Mid-Point Drawing Algorithm"<<endl;
+            cout<<"Convex Filling A Shape with 5 points"<<endl;
             break;
         case 14:
             instruction = 14;
+            counter = 0;
             MessageBeep(MB_OK);
-            cout<<"Circle Modified Mid-Point Drawing Algorithm"<<endl;
+            cout<<"NoN Convex Filling A Shape with 5 points"<<endl;
             break;
         case 15:
             instruction = 15;
@@ -822,16 +1008,23 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
             break;
 
         // functions
+
         // save
         case 22:
             MessageBeep(MB_OK);
             cout<<"Saving...."<<endl;
+            SaveFunction("points.txt");
+            cout<<"Saved Successfully"<<endl;
             break;
+
         // load
         case 23:
             MessageBeep(MB_OK);
             cout<<"Loading...."<<endl;
+            loadFunction(hdc);
+            cout<<"Loaded Successfully"<<endl;
             break;
+
         // clear
         case 24:
             cout<<"Clearing....."<<endl;
@@ -839,6 +1032,7 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
             // InvalidateRect (hwnd, NULL, NULL);
             ShowWindow(hwnd, SW_HIDE);
             ShowWindow(hwnd, SW_SHOW);
+            AllPointsSaved.clear();
 
             cout<<"All Items Have Been Cleared"<<endl;
             MessageBeep(MB_OK);
@@ -917,8 +1111,9 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
             MessageBeep(MB_OK);
             break;
         case 41:
-            MessageBox(hwnd, "TO Draw A Line: Drag the Start point to the end point of line With Left Click \n"
-                       "TO Draw A Circle: press left click to define the center and release to the edge of the circle you like"
+            MessageBox(hwnd, "To Draw A Line: Drag the Start point to the end point of line With Left Click \n"
+                       "To Draw A Circle: press left click to define the center and release to the edge of the circle you like \n"
+                       "To Draw An Ellipse: "
                        , "How To Draw", MB_OK);
             break;
         }
@@ -1069,6 +1264,89 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
             r = pow(pow(xend - xstart, 2) + pow(yend - ystart, 2) * 1.0, 0.5);
             DrawCircleModifiedMidpoint(hdc, xstart, ystart, r, c);
             cout<<"Circle Drawn"<<endl;
+            break;
+
+        // convex and Non convex filling
+
+        case 13:
+            if(counter == 0)
+            {
+                pTemp.x = xend;
+                pTemp.y = yend;
+                p[counter] = pTemp;
+                counter++;
+            }
+            else if(counter == 1)
+            {
+                pTemp.x = xend;
+                pTemp.y = yend;
+                p[counter] = pTemp;
+                counter++;
+            }
+            else if(counter == 2)
+            {
+                pTemp.x = xend;
+                pTemp.y = yend;
+                p[counter] = pTemp;
+                counter++;
+            }
+            else if(counter == 3)
+            {
+                pTemp.x = xend;
+                pTemp.y = yend;
+                p[counter] = pTemp;
+                counter++;
+            }
+            else if(counter == 4)
+            {
+                pTemp.x = xend;
+                pTemp.y = yend;
+                p[counter] = pTemp;
+                counter = 0;
+                ConvexFill(hdc, p, 5, c);
+                cout<<"Shape Filled"<<endl;
+            }
+
+            break;
+        case 14:
+            if(counter == 0)
+            {
+                pTemp.x = xend;
+                pTemp.y = yend;
+                p[counter] = pTemp;
+                counter++;
+            }
+            else if(counter == 1)
+            {
+                pTemp.x = xend;
+                pTemp.y = yend;
+                p[counter] = pTemp;
+                counter++;
+            }
+            else if(counter == 2)
+            {
+                pTemp.x = xend;
+                pTemp.y = yend;
+                p[counter] = pTemp;
+                counter++;
+            }
+            else if(counter == 3)
+            {
+                pTemp.x = xend;
+                pTemp.y = yend;
+                p[counter] = pTemp;
+                counter++;
+            }
+            else if(counter == 4)
+            {
+                pTemp.x = xend;
+                pTemp.y = yend;
+                p[counter] = pTemp;
+                counter = 0;
+                GeneralPolygonFill(hdc, p, 5, c);
+                cout<<"Shape Filled"<<endl;
+            }
+
             break;
 
         // filling algorithm
