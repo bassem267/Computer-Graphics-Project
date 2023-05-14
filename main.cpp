@@ -34,25 +34,28 @@ void saveFunctionPoints(int x, int y, COLORREF ha)
     AllPointsSaved.push_back(ha);
 }
 
-void SaveToFile(const vector<int>& vec, const char* filename) {
-  ofstream outfile(filename, ios::binary);
-  outfile.write(reinterpret_cast<const char*>(&vec[0]), vec.size() * sizeof(int));
+void SaveToFile(const vector<int>& vec, const char* filename)
+{
+    ofstream outfile(filename, ios::binary);
+    outfile.write(reinterpret_cast<const char*>(&vec[0]), vec.size() * sizeof(int));
 
 }
 
-void SaveFunction(const char* filename){
+void SaveFunction(const char* filename)
+{
     SaveToFile(AllPointsSaved, filename);
     AllPointsSaved.clear();
 }
 
-vector<int> readVectorFromFile(const char* filename) {
-  ifstream infile(filename, ios::binary);
-  infile.seekg(0, ios::end);
-  int filesize = infile.tellg();
-  infile.seekg(0, ios::beg);
-  vector<int> vec(filesize / sizeof(int));
-  infile.read(reinterpret_cast<char*>(&vec[0]), filesize);
-  return vec;
+vector<int> readVectorFromFile(const char* filename)
+{
+    ifstream infile(filename, ios::binary);
+    infile.seekg(0, ios::end);
+    int filesize = infile.tellg();
+    infile.seekg(0, ios::beg);
+    vector<int> vec(filesize / sizeof(int));
+    infile.read(reinterpret_cast<char*>(&vec[0]), filesize);
+    return vec;
 }
 
 void loadFunction(HDC hdc)
@@ -61,9 +64,10 @@ void loadFunction(HDC hdc)
 
     int xload, yload, cload;
     int haha = 0;
+    int siz = LoadedPoints.size();
 
 
-    for (int i = 0 ; i < LoadedPoints.size() ; i++)
+    for (int i = 0 ; i < siz ; i++)
     {
         if( haha == 0)
         {
@@ -222,7 +226,6 @@ void DrawLineMidPoint(HDC hdc,int x1,int y1,int x2,int y2,COLORREF c)
 //Parametric
 void DrawLineParametric(HDC hdc,int x1,int y1,int x2, int y2,COLORREF c)
 {
-    int Count=0;
     double dx=x2-x1;
     double dy=y2-y1;
     SetPixel(hdc, x1, y1, c);
@@ -634,29 +637,29 @@ void FloodFill(HDC hdc,int x,int y,COLORREF Cb,COLORREF Cf)
 }
 
 // Non-Recursive Flood Fill
-struct Vertex
+struct VertexFill
 {
     int x,y;
-    Vertex(int x,int y):x(x),y(y)
+    VertexFill(int x,int y):x(x),y(y)
     {
     }
 };
 void NRFloodFill(HDC hdc,int x,int y,COLORREF Cb,COLORREF Cf)
 {
-    stack<Vertex> S;
-    S.push(Vertex(x,y));
+    stack<VertexFill> S;
+    S.push(VertexFill(x,y));
     while(!S.empty())
     {
-        Vertex v=S.top();
+        VertexFill v=S.top();
         S.pop();
         COLORREF c = GetPixel(hdc, v.x, v.y);
         if(c==Cb || c==Cf)continue;
 
         SetPixel(hdc, v.x, v.y, Cf);
-        S.push(Vertex(v.x+1,v.y));
-        S.push(Vertex(v.x-1,v.y));
-        S.push(Vertex(v.x,v.y+1));
-        S.push(Vertex(v.x,v.y-1));
+        S.push(VertexFill(v.x+1,v.y));
+        S.push(VertexFill(v.x-1,v.y));
+        S.push(VertexFill(v.x,v.y+1));
+        S.push(VertexFill(v.x,v.y-1));
     }
 }
 
@@ -793,7 +796,8 @@ void GeneralPolygonFill(HDC hdc,POINT *polygon,int n,COLORREF c)
             int x1=(int)ceil(it->x);
             it++;
             int x2=(int)floor(it->x);
-            for(int x=x1; x<=x2; x++){
+            for(int x=x1; x<=x2; x++)
+            {
                 SetPixel(hdc,x,y,c);
                 saveFunctionPoints(x, y, c);
             }
@@ -809,6 +813,187 @@ void GeneralPolygonFill(HDC hdc,POINT *polygon,int n,COLORREF c)
     }
     delete[] table;
 }
+
+
+// clipping algorithm
+
+// point clipping
+
+void PointClipping(HDC hdc, int x, int y, int xleft, int ytop, int xright, int ybottom, COLORREF color)
+{
+    if(x>=xleft && x<= xright && y>=ytop && y<=ybottom)
+        SetPixel(hdc,x,y,color);
+}
+
+
+// line clipping
+union OutCode
+{
+    unsigned All:4;
+    struct
+    {
+        unsigned left:1,top:1,right:1,bottom:1;
+    };
+};
+
+OutCode GetOutCode(double x,double y,int xleft,int ytop,int xright,int ybottom)
+{
+    OutCode out;
+    out.All=0;
+
+    if(x<xleft)
+        out.left=1;
+
+    else if(x>xright)
+        out.right=1;
+
+    if(y<ytop)
+        out.top=1;
+
+    else if(y>ybottom)
+        out.bottom=1;
+
+    return out;
+}
+
+void VIntersect(double xs,double ys,double xe,double ye,int x,double *xi,double *yi)
+{
+    *xi=x;
+    *yi=ys+(x-xs)*(ye-ys)/(xe-xs);
+}
+void HIntersect(double xs,double ys,double xe,double ye,int y,double *xi,double *yi)
+{
+    *yi=y;
+    *xi=xs+(y-ys)*(xe-xs)/(ye-ys);
+}
+
+void LineClipping(HDC hdc,int xs,int ys,int xe,int ye,int xleft,int ytop,int xright,int ybottom)
+{
+    double x1=xs,y1=ys,x2=xe,y2=ye;
+    OutCode out1=GetOutCode(x1,y1,xleft,ytop,xright,ybottom);
+    OutCode out2=GetOutCode(x2,y2,xleft,ytop,xright,ybottom);
+    while( (out1.All || out2.All) && !(out1.All & out2.All))
+    {
+        double xi,yi;
+        if(out1.All)
+        {
+            if(out1.left)VIntersect(x1,y1,x2,y2,xleft,&xi,&yi);
+            else if(out1.top)HIntersect(x1,y1,x2,y2,ytop,&xi,&yi);
+            else if(out1.right)VIntersect(x1,y1,x2,y2,xright,&xi,&yi);
+            else HIntersect(x1,y1,x2,y2,ybottom,&xi,&yi);
+            x1=xi;
+            y1=yi;
+            out1=GetOutCode(x1,y1,xleft,ytop,xright,ybottom);
+        }
+        else
+        {
+            if(out2.left)VIntersect(x1,y1,x2,y2,xleft,&xi,&yi);
+            else if(out2.top)HIntersect(x1,y1,x2,y2,ytop,&xi,&yi);
+            else if(out2.right)VIntersect(x1,y1,x2,y2,xright,&xi,&yi);
+            else HIntersect(x1,y1,x2,y2,ybottom,&xi,&yi);
+            x2=xi;
+            y2=yi;
+            out2=GetOutCode(x2,y2,xleft,ytop,xright,ybottom);
+        }
+    }
+    if(!out1.All && !out2.All)
+    {
+        MoveToEx(hdc,Round(x1),Round(y1),NULL);
+        LineTo(hdc,Round(x2),Round(y2));
+    }
+}
+
+// polygon clipping
+struct Vertex
+{
+    double x,y;
+    Vertex(int x1=0,int y1=0)
+    {
+        x=x1;
+        y=y1;
+    }
+};
+typedef vector<Vertex> VertexList;
+typedef bool (*IsInFunc)(Vertex& v,int edge);
+typedef Vertex (*IntersectFunc)(Vertex& v1,Vertex& v2,int edge);
+
+
+
+VertexList ClipWithEdge(VertexList p,int edge,IsInFunc In,IntersectFunc Intersect)
+{
+    VertexList OutList;
+    Vertex v1=p[p.size()-1];
+    bool v1_in=In(v1,edge);
+    for(int i=0; i<(int)p.size(); i++)
+    {
+        Vertex v2=p[i];
+        bool v2_in=In(v2,edge);
+        if(!v1_in && v2_in)
+        {
+            OutList.push_back(Intersect(v1,v2,edge));
+            OutList.push_back(v2);
+        }
+        else if(v1_in && v2_in) OutList.push_back(v2);
+        else if(v1_in) OutList.push_back(Intersect(v1,v2,edge));
+        v1=v2;
+        v1_in=v2_in;
+    }
+    return OutList;
+}
+
+
+bool InLeft(Vertex& v,int edge)
+{
+    return v.x>=edge;
+}
+bool InRight(Vertex& v,int edge)
+{
+    return v.x<=edge;
+}
+bool InTop(Vertex& v,int edge)
+{
+    return v.y>=edge;
+}
+bool InBottom(Vertex& v,int edge)
+{
+    return v.y<=edge;
+}
+
+
+Vertex VIntersect(Vertex& v1,Vertex& v2,int xedge)
+{
+    Vertex res;
+    res.x=xedge;
+    res.y=v1.y+(xedge-v1.x)*(v2.y-v1.y)/(v2.x-v1.x);
+    return res;
+}
+Vertex HIntersect(Vertex& v1,Vertex& v2,int yedge)
+{
+    Vertex res;
+    res.y=yedge;
+    res.x=v1.x+(yedge-v1.y)*(v2.x-v1.x)/(v2.y-v1.y);
+    return res;
+}
+
+
+void PolygonClip(HDC hdc,POINT *p,int n,int xleft,int ytop,int xright,int ybottom)
+{
+    VertexList vlist;
+    for(int i=0; i<n; i++)vlist.push_back(Vertex(p[i].x,p[i].y));
+    vlist=ClipWithEdge(vlist,xleft,InLeft,VIntersect);
+    vlist=ClipWithEdge(vlist,ytop,InTop,HIntersect);
+    vlist=ClipWithEdge(vlist,xright,InRight,VIntersect);
+    vlist=ClipWithEdge(vlist,ybottom,InBottom,HIntersect);
+    Vertex v1=vlist[vlist.size()-1];
+    for(int i=0; i<(int)vlist.size(); i++)
+    {
+        Vertex v2=vlist[i];
+        MoveToEx(hdc,Round(v1.x),Round(v1.y),NULL);
+        LineTo(hdc,Round(v2.x),Round(v2.y));
+        v1=v2;
+    }
+}
+
 
 /*  Declare Windows procedure  */
 LRESULT CALLBACK WindowProcedure (HWND, UINT, WPARAM, LPARAM);
@@ -878,6 +1063,9 @@ int WINAPI WinMain (HINSTANCE hThisInstance,
 
 static int xstart, ystart, xmid, ymid, xend, yend;
 static int instruction = 0;
+static int xleft, xright, ytop, ybottom;
+static int xinter, yinter;
+static int clippingCounter = 0;
 double r, a, b;
 COLORREF c = RGB(0, 0, 0);
 static int counter = 0;
@@ -1116,6 +1304,27 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
                        "To Draw An Ellipse: "
                        , "How To Draw", MB_OK);
             break;
+        // clipping algorithms
+        case 43:
+            instruction = 43;
+            MessageBeep(MB_OK);
+            break;
+        case 44:
+            instruction = 44;
+            MessageBeep(MB_OK);
+            break;
+        case 45:
+            instruction = 45;
+            MessageBeep(MB_OK);
+            break;
+        case 46:
+            instruction = 46;
+            MessageBeep(MB_OK);
+            break;
+        case 47:
+            instruction = 47;
+            MessageBeep(MB_OK);
+            break;
         }
     }
 
@@ -1170,16 +1379,29 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
         AppendMenu(ELLIPSE, MF_STRING, 19, "Ellipse Polar");
         AppendMenu(ELLIPSE, MF_STRING, 20, "Ellipse MID-POINT");
 
-        HMENU ColorMenu=CreateMenu();
-        AppendMenu(ColorMenu,MF_STRING,26,"Red");
-        AppendMenu(ColorMenu,MF_STRING,27,"Green");
-        AppendMenu(ColorMenu,MF_STRING,28,"Blue");
-        AppendMenu(ColorMenu,MF_SEPARATOR, 0, 0);
-        AppendMenu(ColorMenu,MF_STRING,29,"White");
-        AppendMenu(ColorMenu,MF_STRING,30,"Black");
-        AppendMenu(ColorMenu,MF_STRING,31,"Grey");
-        AppendMenu(ColorMenu,MF_SEPARATOR, 0, 0);
-        AppendMenu(ColorMenu,MF_STRING,32,"Light Blue");
+        HMENU ColorMenu = CreateMenu();
+        AppendMenu(ColorMenu, MF_STRING,26,"Red");
+        AppendMenu(ColorMenu, MF_STRING,27,"Green");
+        AppendMenu(ColorMenu, MF_STRING,28,"Blue");
+        AppendMenu(ColorMenu, MF_SEPARATOR, 0, 0);
+        AppendMenu(ColorMenu, MF_STRING,29,"White");
+        AppendMenu(ColorMenu, MF_STRING,30,"Black");
+        AppendMenu(ColorMenu, MF_STRING,31,"Grey");
+        AppendMenu(ColorMenu, MF_SEPARATOR, 0, 0);
+        AppendMenu(ColorMenu, MF_STRING,32,"Light Blue");
+
+        HMENU ClippingMenu = CreateMenu();
+
+        HMENU ClippingRectangel = CreateMenu();
+        AppendMenu(ClippingMenu, MF_POPUP, (UINT_PTR)ClippingRectangel, "Clipping Rectangle");
+        AppendMenu(ClippingRectangel, MF_STRING, 43, "Point");
+        AppendMenu(ClippingRectangel, MF_STRING, 44, "Line");
+        AppendMenu(ClippingRectangel, MF_STRING, 45, "Polygon");
+
+        HMENU ClippingSquare = CreateMenu();
+        AppendMenu(ClippingMenu, MF_POPUP, (UINT_PTR)ClippingSquare, "Clipping Square");
+        AppendMenu(ClippingSquare, MF_STRING, 46, "Point");
+        AppendMenu(ClippingSquare, MF_STRING, 47, "Line");
 
 
         HMENU hmenu = CreateMenu();
@@ -1193,11 +1415,15 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
         AppendMenu(hmenu, MF_POPUP, 21, "Cardinal Spline Curve");
         AppendMenu(hmenu, MF_SEPARATOR, 0, 0);
 
+        AppendMenu(hmenu, MF_POPUP, (UINT_PTR)ClippingMenu, "Clipping Algorithms");
+        AppendMenu(hmenu, MF_SEPARATOR, 0, 0);
+
         AppendMenu(hmenu, MF_POPUP, (UINT_PTR)ColorMenu, "Colors");
         AppendMenu(hmenu, MF_STRING, 22, "Save");
         AppendMenu(hmenu, MF_STRING, 23, "Load");
         AppendMenu(hmenu, MF_STRING, 24, "Clean screen");
         AppendMenu(hmenu, MF_SEPARATOR, 0, 0);
+
 
         AppendMenu(hmenu, MF_STRING, 41, "Help");
         AppendMenu(hmenu, MF_STRING, 42, "Exit");
@@ -1216,6 +1442,23 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
     {
         xmid = LOWORD(lParam);
         ymid = HIWORD(lParam);
+
+        if (instruction == 43){
+            PointClipping(hdc, xmid, ymid, xleft, ytop, xright, ybottom, c);
+        }
+
+        break;
+    }
+
+    case WM_RBUTTONUP:
+    {
+        xinter = LOWORD(lParam);
+        yinter = HIWORD(lParam);
+
+        if (instruction == 44){
+            LineClipping(hdc, xmid, ymid, xinter, yinter, xleft, ytop, xright, ybottom);
+        }
+
         break;
     }
 
@@ -1427,6 +1670,127 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
             r = pow(pow(xend - xstart, 2) + pow(yend - ystart, 2) * 1.0, 0.5);
             DrawCircleWithLines(hdc, xstart, ystart, r, 4, c);
             cout<<"Circle Drawn"<<endl;
+            break;
+
+        // clipping
+        case 43:
+            if(clippingCounter == 0)
+            {
+                xleft = LOWORD(lParam);
+                ytop = HIWORD(lParam);
+                clippingCounter++;
+            }
+            else if(clippingCounter == 1)
+            {
+                xright = LOWORD(lParam);
+                clippingCounter++;
+            }
+            else
+            {
+                ybottom = HIWORD(lParam);
+                DrawLineDDA(hdc, xleft, ytop, xright, ytop, c);
+                DrawLineDDA(hdc, xleft, ybottom, xright, ybottom, c);
+                DrawLineDDA(hdc, xleft, ybottom, xleft, ytop, c);
+                DrawLineDDA(hdc, xright, ybottom, xright, ytop, c);
+                cout<<"Clipping Window Drawn"<<endl;
+                clippingCounter = 0;
+            }
+
+
+            break;
+        case 44:
+            if(clippingCounter == 0)
+            {
+                xleft = LOWORD(lParam);
+                ytop = HIWORD(lParam);
+                clippingCounter++;
+            }
+            else if(clippingCounter == 1)
+            {
+                xright = LOWORD(lParam);
+                clippingCounter++;
+            }
+            else
+            {
+                ybottom = HIWORD(lParam);
+                DrawLineDDA(hdc, xleft, ytop, xright, ytop, c);
+                DrawLineDDA(hdc, xleft, ybottom, xright, ybottom, c);
+                DrawLineDDA(hdc, xleft, ybottom, xleft, ytop, c);
+                DrawLineDDA(hdc, xright, ybottom, xright, ytop, c);
+                cout<<"Clipping Window Drawn"<<endl;
+                clippingCounter = 0;
+            }
+            break;
+        case 45:
+            if(clippingCounter == 0)
+            {
+                xleft = LOWORD(lParam);
+                ytop = HIWORD(lParam);
+                clippingCounter++;
+            }
+            else if(clippingCounter == 1)
+            {
+                xright = LOWORD(lParam);
+                clippingCounter++;
+            }
+            else
+            {
+                ybottom = HIWORD(lParam);
+                DrawLineDDA(hdc, xleft, ytop, xright, ytop, c);
+                DrawLineDDA(hdc, xleft, ybottom, xright, ybottom, c);
+                DrawLineDDA(hdc, xleft, ybottom, xleft, ytop, c);
+                DrawLineDDA(hdc, xright, ybottom, xright, ytop, c);
+                cout<<"Clipping Window Drawn"<<endl;
+                clippingCounter = 0;
+            }
+            break;
+        // square
+        case 46:
+            if(clippingCounter == 0)
+            {
+                xleft = LOWORD(lParam);
+                ytop = HIWORD(lParam);
+                clippingCounter++;
+            }
+            else if(clippingCounter == 1)
+            {
+                xright = LOWORD(lParam);
+                clippingCounter++;
+            }
+            else
+            {
+                ybottom = HIWORD(lParam);
+                DrawLineDDA(hdc, xleft, ytop, xright, ytop, c);
+                DrawLineDDA(hdc, xleft, ybottom, xright, ybottom, c);
+                DrawLineDDA(hdc, xleft, ybottom, xleft, ytop, c);
+                DrawLineDDA(hdc, xright, ybottom, xright, ytop, c);
+                cout<<"Clipping Window Drawn"<<endl;
+                clippingCounter = 0;
+            }
+            cout<<"Clipping Window Drawn"<<endl;
+            break;
+        case 47:
+            if(clippingCounter == 0)
+            {
+                xleft = LOWORD(lParam);
+                ytop = HIWORD(lParam);
+                clippingCounter++;
+            }
+            else if(clippingCounter == 1)
+            {
+                xright = LOWORD(lParam);
+                clippingCounter++;
+            }
+            else
+            {
+                ybottom = HIWORD(lParam);
+                DrawLineDDA(hdc, xleft, ytop, xright, ytop, c);
+                DrawLineDDA(hdc, xleft, ybottom, xright, ybottom, c);
+                DrawLineDDA(hdc, xleft, ybottom, xleft, ytop, c);
+                DrawLineDDA(hdc, xright, ybottom, xright, ytop, c);
+                cout<<"Clipping Window Drawn"<<endl;
+                clippingCounter = 0;
+            }
             break;
         }
         break;

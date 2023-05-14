@@ -1,5 +1,5 @@
 # depslib dependency file v1.0
-1683977611 source:d:\college\computer graphics\code\project\main.cpp
+1683986321 source:d:\college\computer graphics\code\project\main.cpp
 	<windowsx.h>
 	<tchar.h>
 	<windows.h>
@@ -12,6 +12,5 @@
 	<stack>
 	<list>
 	<algorithm>
-	<cctype>
 	<string>
 
