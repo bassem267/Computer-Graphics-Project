@@ -994,6 +994,131 @@ void PolygonClip(HDC hdc,POINT *p,int n,int xleft,int ytop,int xright,int ybotto
     }
 }
 
+// Curve Drawing
+struct vector2
+{
+    double x,y;
+    vector2(double a=0,double b=0)
+    {
+        x=a;
+        y=b;
+    }
+};
+
+class vector4
+{
+    double v[4];
+public:
+    vector4(double a=0, double b=0, double c=0, double d=0)
+    {
+        v[0]=a;
+        v[1]=b;
+        v[2]=c;
+        v[3]=d;
+    }
+    vector4(double a[])
+    {
+        memcpy(v,a,4* sizeof(double));
+    }
+    double& operator[](int i)
+    {
+        return v[i];
+    }
+};
+
+class matrix4
+{
+    vector4 M[4];
+public:
+    matrix4(double  A[])
+    {
+        memcpy(M,A,16* sizeof(double));
+    }
+    vector4& operator[](int i)
+    {
+        return M[i];
+    }
+};
+
+vector4 operator*(matrix4 M, vector4& b) //right multiplication of M and b
+{
+    vector4 res;
+    for(int i=0; i<4; i++)
+    {
+        for(int j=0; j<4; j++)
+        {
+            res[i]+=M[i][j]*b[j];
+        }
+    }
+    return res;
+}
+
+double DotProduct(vector4& a, vector4& b) //multiplying a row vector by a column vector
+{
+    return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3];
+}
+
+vector4 GetHermiteCoeff(double x0,double s0,double x1,double s1)
+{
+    static double H[16]= {2,1,-2,1,-3,-2,3,-1,0,1,0,0,1,0,0,0};
+    static matrix4 basis(H);
+    vector4 v(x0,s0,x1,s1);
+    return basis*v;
+}
+
+void DrawHermiteCurve(HDC hdc,vector2& p0,vector2& t0,vector2& p1,vector2& t1,int numpoints, COLORREF c)
+{
+    vector4 xcoeff= GetHermiteCoeff(p0.x,t0.x,p1.x,t1.x);
+    vector4 ycoeff= GetHermiteCoeff(p0.y,t0.y,p1.y,t1.y);
+
+    if(numpoints<2)
+    {
+        return;
+    }
+    double dt=0.00001;
+
+    for(double t=0; t<=1; t+=dt)
+    {
+        vector4 vt;
+        vt[3]=1;
+        for(int i=2; i>=0; i--)
+        {
+            vt[i]=vt[i+1]*t;
+        }
+
+        int x=round(DotProduct(xcoeff,vt));
+        int y=round(DotProduct(ycoeff,vt));
+
+        if(t==0)
+        {
+            MoveToEx(hdc,x,y,NULL);
+        }
+        else
+        {
+            LineTo(hdc,x,y);
+        }
+    }
+}
+
+void DrawBezierCurve(HDC hdc,Vector2& P0,Vector2& P1,Vector2& P2,Vector2& P3,int
+                     numpoints)
+{
+    Vector2 T0(3*(P1.x-P0.x),3*(P1.y-P0.y));
+    Vector2 T1(3*(P3.x-P2.x),3*(P3.y-P2.y));
+    DrawHermiteCurve(hdc,P0,T0,P3,T1,numpoints);
+}
+
+void DrawCardinalSpline(HDC hdc,Vector2 P[],int n,double c,int numpix)
+{
+    double c1=1-c;
+    Vector2 T0(c1*(P[2].x-P[0].x),c1*(P[2].y-P[0].y));
+    for(int i=2; i<n-1; i++)
+    {
+        Vector2 T1(c1*(P[i+1].x-P[i-1].x),c1*(P[i+1].y-P[i-1].y));
+        DrawHermiteCurve(hdc,P[i-1],T0,P[i],T1,numpix);
+        T0=T1;
+    }
+}
 
 /*  Declare Windows procedure  */
 LRESULT CALLBACK WindowProcedure (HWND, UINT, WPARAM, LPARAM);
@@ -1066,6 +1191,11 @@ static int instruction = 0;
 static int xleft, xright, ytop, ybottom;
 static int xinter, yinter;
 static int clippingCounter = 0;
+static float s_facx = 0.0;
+static float s_facy = 0.0;
+static int tx = 0;
+static int ty = 0;
+
 double r, a, b;
 COLORREF c = RGB(0, 0, 0);
 static int counter = 0;
@@ -1129,6 +1259,24 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
             MessageBeep(MB_OK);
             cout<<"Circle Modified Mid-Point Drawing Algorithm"<<endl;
             break;
+        case 9:
+            cout << "Enter Scaling factor in x-axis:";
+            cin >> s_facx;  // Scaling factor in x-axis
+            cout << "Enter Scaling factor in y-axis:";
+            cin >> s_facy ;  // Scaling factor in y-axis
+
+            // Apply scaling
+            xstart = static_cast<int>(xstart * s_facx);
+            ystart = static_cast<int>(ystart * s_facy);
+            xend = static_cast<int>(xend * s_facx);
+            yend = static_cast<int>(yend * s_facy);
+
+            cout << "Scaling Done " << endl;
+
+            DrawLineDDA(hdc, xstart, ystart, xend, yend, c);
+
+            break;
+
 
         // curve hermit bezier
         case 11:
@@ -1325,11 +1473,30 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
             instruction = 47;
             MessageBeep(MB_OK);
             break;
+        // 2D translation
+        case 48:
+            cout << "Enter Translation in x-axis:";
+            cin >> tx;  // Translation in x-axis
+            cout << "Enter Translation in y-axis:";
+            cin >> ty;  // Translation in y-axis
+
+            // Apply translation
+            xstart += tx;
+            ystart += ty;
+            xend += tx;
+            yend += ty;
+
+            DrawLineDDA(hdc, xstart, ystart, xend, yend, c);
+
+            cout << " Translation Done " << endl;
+
+            break;
+
         }
     }
 
     // the Menu Creation
-    case WM_CREATE:
+case WM_CREATE:
     {
         ShowWindow(hwnd, SW_MAXIMIZE);
         HMENU LINE = CreateMenu();
@@ -1403,7 +1570,11 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
         AppendMenu(ClippingSquare, MF_STRING, 46, "Point");
         AppendMenu(ClippingSquare, MF_STRING, 47, "Line");
 
+        HMENU Transformation = CreateMenu();
+        AppendMenu(Transformation, MF_STRING, 48, "Translate");
+        AppendMenu(Transformation, MF_STRING, 9, "Scale");
 
+        // main menu
         HMENU hmenu = CreateMenu();
         AppendMenu(hmenu, MF_POPUP, (UINT_PTR)LINE, "Line");
         AppendMenu(hmenu, MF_POPUP, (UINT_PTR)CIRCLE, "Circle");
@@ -1416,6 +1587,9 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
         AppendMenu(hmenu, MF_SEPARATOR, 0, 0);
 
         AppendMenu(hmenu, MF_POPUP, (UINT_PTR)ClippingMenu, "Clipping Algorithms");
+        AppendMenu(hmenu, MF_SEPARATOR, 0, 0);
+
+        AppendMenu(hmenu, MF_POPUP, (UINT_PTR)Transformation, "2D Transformation");
         AppendMenu(hmenu, MF_SEPARATOR, 0, 0);
 
         AppendMenu(hmenu, MF_POPUP, (UINT_PTR)ColorMenu, "Colors");
@@ -1431,38 +1605,40 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
         break;
     }
 
-    case WM_LBUTTONDOWN:
+case WM_LBUTTONDOWN:
     {
         xstart = LOWORD(lParam);
         ystart = HIWORD(lParam);
         break;
     }
 
-    case WM_RBUTTONDOWN:
+case WM_RBUTTONDOWN:
     {
         xmid = LOWORD(lParam);
         ymid = HIWORD(lParam);
 
-        if (instruction == 43){
+        if (instruction == 43)
+        {
             PointClipping(hdc, xmid, ymid, xleft, ytop, xright, ybottom, c);
         }
 
         break;
     }
 
-    case WM_RBUTTONUP:
+case WM_RBUTTONUP:
     {
         xinter = LOWORD(lParam);
         yinter = HIWORD(lParam);
 
-        if (instruction == 44){
+        if (instruction == 44)
+        {
             LineClipping(hdc, xmid, ymid, xinter, yinter, xleft, ytop, xright, ybottom);
         }
 
         break;
     }
 
-    case WM_LBUTTONUP:
+case WM_LBUTTONUP:
     {
         xend = LOWORD(lParam);
         yend = HIWORD(lParam);
@@ -1795,12 +1971,12 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
         }
         break;
     }
-    case WM_DESTROY:
-        PostQuitMessage(0);       /* send a WM QUIT to the message queue */
-        break;
-    default:                 /* for messages that we don't deal with */
-        return DefWindowProc (hwnd, message, wParam, lParam);
-    }
+case WM_DESTROY:
+    PostQuitMessage(0);       /* send a WM QUIT to the message queue */
+    break;
+default:                 /* for messages that we don't deal with */
+    return DefWindowProc (hwnd, message, wParam, lParam);
+}
 
-    return 0;
+return 0;
 }
