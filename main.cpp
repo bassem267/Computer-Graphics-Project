@@ -38,7 +38,6 @@ void SaveToFile(const vector<int>& vec, const char* filename)
 {
     ofstream outfile(filename, ios::binary);
     outfile.write(reinterpret_cast<const char*>(&vec[0]), vec.size() * sizeof(int));
-
 }
 
 void SaveFunction(const char* filename)
@@ -1066,7 +1065,7 @@ vector4 GetHermiteCoeff(double x0,double s0,double x1,double s1)
     return basis*v;
 }
 
-void DrawHermiteCurve(HDC hdc,vector2& p0,vector2& t0,vector2& p1,vector2& t1,int numpoints, COLORREF c)
+void DrawHermiteCurve(HDC hdc,vector2& p0,vector2& t0,vector2& p1,vector2& t1,int numpoints)
 {
     vector4 xcoeff= GetHermiteCoeff(p0.x,t0.x,p1.x,t1.x);
     vector4 ycoeff= GetHermiteCoeff(p0.y,t0.y,p1.y,t1.y);
@@ -1100,21 +1099,20 @@ void DrawHermiteCurve(HDC hdc,vector2& p0,vector2& t0,vector2& p1,vector2& t1,in
     }
 }
 
-void DrawBezierCurve(HDC hdc,Vector2& P0,Vector2& P1,Vector2& P2,Vector2& P3,int
-                     numpoints)
+void DrawBezierCurve(HDC hdc, vector2& P0, vector2& P1, vector2& P2, vector2& P3, int numpoints)
 {
-    Vector2 T0(3*(P1.x-P0.x),3*(P1.y-P0.y));
-    Vector2 T1(3*(P3.x-P2.x),3*(P3.y-P2.y));
+    vector2 T0(3*(P1.x-P0.x),3*(P1.y-P0.y));
+    vector2 T1(3*(P3.x-P2.x),3*(P3.y-P2.y));
     DrawHermiteCurve(hdc,P0,T0,P3,T1,numpoints);
 }
 
-void DrawCardinalSpline(HDC hdc,Vector2 P[],int n,double c,int numpix)
+void DrawCardinalSpline(HDC hdc, vector2 P[], int n, double c, int numpix)
 {
     double c1=1-c;
-    Vector2 T0(c1*(P[2].x-P[0].x),c1*(P[2].y-P[0].y));
+    vector2 T0(c1*(P[2].x-P[0].x),c1*(P[2].y-P[0].y));
     for(int i=2; i<n-1; i++)
     {
-        Vector2 T1(c1*(P[i+1].x-P[i-1].x),c1*(P[i+1].y-P[i-1].y));
+        vector2 T1(c1*(P[i+1].x-P[i-1].x),c1*(P[i+1].y-P[i-1].y));
         DrawHermiteCurve(hdc,P[i-1],T0,P[i],T1,numpix);
         T0=T1;
     }
@@ -1173,6 +1171,7 @@ int WINAPI WinMain (HINSTANCE hThisInstance,
            );
     /* Make the window visible on the screen */
     ShowWindow (hwnd, nCmdShow);
+    ShowWindow(hwnd, SW_MAXIMIZE);
     /* Run the message loop. It will run until GetMessage() returns 0 */
     while (GetMessage (&messages, NULL, 0, 0))
     {
@@ -1185,22 +1184,34 @@ int WINAPI WinMain (HINSTANCE hThisInstance,
     return messages.wParam;
 }
 
-
+COLORREF c = RGB(0, 0, 0);
 static int xstart, ystart, xmid, ymid, xend, yend;
 static int instruction = 0;
+double r, a, b;
+//
 static int xleft, xright, ytop, ybottom;
 static int xinter, yinter;
 static int clippingCounter = 0;
+//
 static float s_facx = 0.0;
 static float s_facy = 0.0;
 static int tx = 0;
 static int ty = 0;
-
-double r, a, b;
-COLORREF c = RGB(0, 0, 0);
+//
 static int counter = 0;
 POINT p[5];
 POINT pTemp;
+//
+static vector2 x0,x1,s0,s1;
+static int counterC=0;
+//
+vector2 po[7];
+vector2 ptemp;
+//
+vector2 pointss[4];
+static int counterS=0;
+vector2 midpoint1, midpoint2, P1, P2;
+vector2 Tan0,Tan1;
 
 /*  This function is called by the Windows function DispatchMessage()  */
 PAINTSTRUCT ps;
@@ -1271,23 +1282,26 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
             xend = static_cast<int>(xend * s_facx);
             yend = static_cast<int>(yend * s_facy);
 
-            cout << "Scaling Done " << endl;
+            cout << "Scaling Done" << endl;
 
             DrawLineDDA(hdc, xstart, ystart, xend, yend, c);
 
             break;
-
+        case 10:
+            instruction = 10;
+            MessageBeep(MB_OK);
+            cout<<"Square with Hermit Curve"<<endl;
 
         // curve hermit bezier
         case 11:
             instruction = 11;
             MessageBeep(MB_OK);
-            cout<<"Circle Modified Mid-Point Drawing Algorithm"<<endl;
+            cout<<"Filling A square with Hermit Curve"<<endl;
             break;
         case 12:
             instruction = 12;
             MessageBeep(MB_OK);
-            cout<<"Circle Modified Mid-Point Drawing Algorithm"<<endl;
+            cout<<"Filling A Rectangle with Bezier Curve"<<endl;
             break;
 
         // filling
@@ -1496,7 +1510,7 @@ LRESULT CALLBACK WindowProcedure (HWND hwnd, UINT message, WPARAM wParam, LPARAM
     }
 
     // the Menu Creation
-case WM_CREATE:
+    case WM_CREATE:
     {
         ShowWindow(hwnd, SW_MAXIMIZE);
         HMENU LINE = CreateMenu();
@@ -1605,40 +1619,143 @@ case WM_CREATE:
         break;
     }
 
-case WM_LBUTTONDOWN:
+    case WM_LBUTTONDOWN:
     {
         xstart = LOWORD(lParam);
         ystart = HIWORD(lParam);
+        if ( instruction == 11)
+        {
+            Tan0.x=150,Tan0.y=0,Tan1.x=-150,Tan1.y=0;
+            if(counterS<=5)
+            {
+                pointss[counterS].x = LOWORD(lParam);
+                pointss[counterS].y = HIWORD(lParam);
+                counterS++;
+
+                if(counterS==4)
+                {
+                    midpoint1.x=(pointss[0].x + pointss[1].x)/2;
+                    midpoint1.y=(pointss[0].y + pointss[1].y)/2;
+                    midpoint2.x=(pointss[2].x + pointss[3].x)/2;
+                    midpoint2.y=(pointss[2].y + pointss[3].y)/2;
+
+                    xleft = pointss[0].x;
+                    ytop = pointss[0].y;
+
+                    xright = pointss[1].x;
+
+                    ybottom = pointss[2].y;
+                    // upwards
+                    if ( ytop > ybottom)
+                    {
+                        int temp = xright - xleft;
+                        ybottom = ytop - temp;
+                        swap(ytop, ybottom);
+                    }
+                    // downwards
+                    else
+                    {
+                        int temp = xright - xleft;
+                        ybottom = ytop + temp;
+                    }
+                    DrawLineDDA(hdc, xleft, ytop, xright, ytop, c);
+                    DrawLineDDA(hdc, xleft, ybottom, xright, ybottom, c);
+                    DrawLineDDA(hdc, xleft, ybottom, xleft, ytop, c);
+                    DrawLineDDA(hdc, xright, ybottom, xright, ytop, c);
+                    cout<<"Square Drawn"<<endl;
+
+
+
+                    DrawHermiteCurve(hdc,pointss[0],Tan0,pointss[3],Tan1,c);
+
+                    Tan0.x=-150,Tan1.x=150;
+
+                    DrawHermiteCurve(hdc,pointss[1],Tan0,pointss[2],Tan1,c);
+
+                    Tan0.x=150,Tan1.x=-150;
+
+                    DrawHermiteCurve(hdc,midpoint1,Tan0,midpoint2,Tan1,c);
+
+                    ReleaseDC(hwnd, hdc);
+
+                    counterS=0;
+                }
+            }
+        }
+
         break;
     }
 
-case WM_RBUTTONDOWN:
+    case WM_RBUTTONDOWN:
     {
         xmid = LOWORD(lParam);
         ymid = HIWORD(lParam);
 
-        if (instruction == 43)
+        if (instruction == 43 || instruction == 46)
         {
             PointClipping(hdc, xmid, ymid, xleft, ytop, xright, ybottom, c);
+            cout<<"Point Drawn"<<endl;
+        }
+        else if (instruction == 45)
+        {
+            if(counter == 0)
+            {
+                pTemp.x = xend;
+                pTemp.y = yend;
+                p[counter] = pTemp;
+                counter++;
+            }
+            else if(counter == 1)
+            {
+                pTemp.x = xend;
+                pTemp.y = yend;
+                p[counter] = pTemp;
+                counter++;
+            }
+            else if(counter == 2)
+            {
+                pTemp.x = xend;
+                pTemp.y = yend;
+                p[counter] = pTemp;
+                counter++;
+            }
+            else if(counter == 3)
+            {
+                pTemp.x = xend;
+                pTemp.y = yend;
+                p[counter] = pTemp;
+                counter++;
+                cout<<"Shape Drawn"<<endl;
+            }
+            else if(counter == 4)
+            {
+                pTemp.x = xend;
+                pTemp.y = yend;
+                p[counter] = pTemp;
+                counter = 0;
+                PolygonClip(hdc, p, 5, xleft, ytop, xright, ybottom);
+                cout<<"Shape Drawn"<<endl;
+            }
         }
 
         break;
     }
 
-case WM_RBUTTONUP:
+    case WM_RBUTTONUP:
     {
         xinter = LOWORD(lParam);
         yinter = HIWORD(lParam);
 
-        if (instruction == 44)
+        if (instruction == 44 || instruction == 47)
         {
             LineClipping(hdc, xmid, ymid, xinter, yinter, xleft, ytop, xright, ybottom);
+            cout<<"Line Drawn"<<endl;
         }
 
         break;
     }
 
-case WM_LBUTTONUP:
+    case WM_LBUTTONUP:
     {
         xend = LOWORD(lParam);
         yend = HIWORD(lParam);
@@ -1683,6 +1800,63 @@ case WM_LBUTTONUP:
             r = pow(pow(xend - xstart, 2) + pow(yend - ystart, 2) * 1.0, 0.5);
             DrawCircleModifiedMidpoint(hdc, xstart, ystart, r, c);
             cout<<"Circle Drawn"<<endl;
+            break;
+        // Curve Filling
+        case 11:
+            if(counterC == 0)
+            {
+                x0.x = LOWORD(lParam);
+                x0.y = HIWORD(lParam);
+                counterC++;
+            }
+            else if(counterC == 1)
+            {
+                s0.x = LOWORD(lParam);
+                s0.y = HIWORD(lParam);
+                counterC++;
+            }
+            else if (counterC == 2)
+            {
+                s1.x = LOWORD(lParam);
+                s1.y = HIWORD(lParam);
+                counterC++;
+            }
+            else
+            {
+                x1.x=LOWORD(lParam);
+                x1.y=HIWORD(lParam);
+                DrawHermiteCurve(hdc, x0, s0, x1, s1, 4);
+                cout<<"Curve is Drawn"<<endl;
+                counterC = 0;
+            }
+            break;
+        case 12:
+            if(counterC == 0)
+            {
+                x0.x = LOWORD(lParam);
+                x0.y = HIWORD(lParam);
+                counterC++;
+            }
+            else if(counterC == 1)
+            {
+                s0.x = LOWORD(lParam);
+                s0.y = HIWORD(lParam);
+                counterC++;
+            }
+            else if (counterC == 2)
+            {
+                s1.x = LOWORD(lParam);
+                s1.y = HIWORD(lParam);
+                counterC++;
+            }
+            else
+            {
+                x1.x=LOWORD(lParam);
+                x1.y=HIWORD(lParam);
+                DrawBezierCurve(hdc, x0, s0, s1, x1, 4);
+                cout<<"Curve is Drawn"<<endl;
+                counterC = 0;
+            }
             break;
 
         // convex and Non convex filling
@@ -1770,11 +1944,11 @@ case WM_LBUTTONUP:
 
         // filling algorithm
         case 15:
-            FloodFill(hdc, xend, yend, RGB(255, 255, 255), c);
+            FloodFill(hdc, xend, yend,  RGB(255, 0,0), c);
             cout<<"Filling Done"<<endl;
             break;
         case 16:
-            NRFloodFill(hdc, xend, yend, RGB(255, 255, 255), c);
+            NRFloodFill(hdc, xend, yend, RGB(255, 0,0), c);
             cout<<"Filling Done"<<endl;
             break;
 
@@ -1800,10 +1974,57 @@ case WM_LBUTTONUP:
 
         // cardinal spinal curve
         case 21:
-            a = pow(pow(xmid - xstart, 2) + pow(ymid - ystart, 2) * 1.0, 0.5);
-            b = pow(pow(xend - xstart, 2) + pow(yend - ystart, 2) * 1.0, 0.5);
-            DrawEllipseMidPoint(hdc, xstart, ystart, a, b, c);
-            cout<<"Ellipse Drawn"<<endl;
+            if(counterC == 0)
+            {
+                ptemp.x = LOWORD(lParam);
+                ptemp.y = HIWORD(lParam);
+                po[0] = ptemp;
+                counterC++;
+            }
+            else if(counterC == 1)
+            {
+                ptemp.x = LOWORD(lParam);
+                ptemp.y = HIWORD(lParam);
+                po[1] = ptemp;
+                counterC++;
+            }
+            else if (counterC == 2)
+            {
+                ptemp.x = LOWORD(lParam);
+                ptemp.y = HIWORD(lParam);
+                po[2] = ptemp;
+                counterC++;
+            }
+            else if (counterC == 3)
+            {
+                ptemp.x = LOWORD(lParam);
+                ptemp.y = HIWORD(lParam);
+                po[3] = ptemp;
+                counterC++;
+            }
+            else if (counterC == 4)
+            {
+                ptemp.x = LOWORD(lParam);
+                ptemp.y = HIWORD(lParam);
+                po[4] = ptemp;
+                counterC++;
+            }
+            else if (counterC == 5)
+            {
+                ptemp.x = LOWORD(lParam);
+                ptemp.y = HIWORD(lParam);
+                po[5] = ptemp;
+                counterC++;
+            }
+            else
+            {
+                ptemp.x = LOWORD(lParam);
+                ptemp.y = HIWORD(lParam);
+                po[6] = ptemp;
+                DrawCardinalSpline(hdc, po, 7, 0.5, 7);
+                cout<<"Spinal Curve is Drawn"<<endl;
+                counterC = 0;
+            }
             break;
 
         // circle filling
@@ -1864,6 +2085,10 @@ case WM_LBUTTONUP:
             else
             {
                 ybottom = HIWORD(lParam);
+                if ( ytop > ybottom)
+                {
+                    swap(ytop, ybottom);
+                }
                 DrawLineDDA(hdc, xleft, ytop, xright, ytop, c);
                 DrawLineDDA(hdc, xleft, ybottom, xright, ybottom, c);
                 DrawLineDDA(hdc, xleft, ybottom, xleft, ytop, c);
@@ -1871,8 +2096,6 @@ case WM_LBUTTONUP:
                 cout<<"Clipping Window Drawn"<<endl;
                 clippingCounter = 0;
             }
-
-
             break;
         case 44:
             if(clippingCounter == 0)
@@ -1889,6 +2112,10 @@ case WM_LBUTTONUP:
             else
             {
                 ybottom = HIWORD(lParam);
+                if ( ytop > ybottom)
+                {
+                    swap(ytop, ybottom);
+                }
                 DrawLineDDA(hdc, xleft, ytop, xright, ytop, c);
                 DrawLineDDA(hdc, xleft, ybottom, xright, ybottom, c);
                 DrawLineDDA(hdc, xleft, ybottom, xleft, ytop, c);
@@ -1912,6 +2139,14 @@ case WM_LBUTTONUP:
             else
             {
                 ybottom = HIWORD(lParam);
+                if ( ytop > ybottom)
+                {
+                    swap(ytop, ybottom);
+                }
+                if ( xright < xleft)
+                {
+                    swap(xright, xleft);
+                }
                 DrawLineDDA(hdc, xleft, ytop, xright, ytop, c);
                 DrawLineDDA(hdc, xleft, ybottom, xright, ybottom, c);
                 DrawLineDDA(hdc, xleft, ybottom, xleft, ytop, c);
@@ -1936,6 +2171,19 @@ case WM_LBUTTONUP:
             else
             {
                 ybottom = HIWORD(lParam);
+                // upwards
+                if ( ytop > ybottom)
+                {
+                    int temp = xright - xleft;
+                    ybottom = ytop - temp;
+                    swap(ytop, ybottom);
+                }
+                // downwards
+                else
+                {
+                    int temp = xright - xleft;
+                    ybottom = ytop + temp;
+                }
                 DrawLineDDA(hdc, xleft, ytop, xright, ytop, c);
                 DrawLineDDA(hdc, xleft, ybottom, xright, ybottom, c);
                 DrawLineDDA(hdc, xleft, ybottom, xleft, ytop, c);
@@ -1943,7 +2191,6 @@ case WM_LBUTTONUP:
                 cout<<"Clipping Window Drawn"<<endl;
                 clippingCounter = 0;
             }
-            cout<<"Clipping Window Drawn"<<endl;
             break;
         case 47:
             if(clippingCounter == 0)
@@ -1960,6 +2207,19 @@ case WM_LBUTTONUP:
             else
             {
                 ybottom = HIWORD(lParam);
+                // upwards
+                if ( ytop > ybottom)
+                {
+                    int temp = xright - xleft;
+                    ybottom = ytop - temp;
+                    swap(ytop, ybottom);
+                }
+                // downwards
+                else
+                {
+                    int temp = xright - xleft;
+                    ybottom = ytop + temp;
+                }
                 DrawLineDDA(hdc, xleft, ytop, xright, ytop, c);
                 DrawLineDDA(hdc, xleft, ybottom, xright, ybottom, c);
                 DrawLineDDA(hdc, xleft, ybottom, xleft, ytop, c);
@@ -1971,12 +2231,12 @@ case WM_LBUTTONUP:
         }
         break;
     }
-case WM_DESTROY:
-    PostQuitMessage(0);       /* send a WM QUIT to the message queue */
-    break;
-default:                 /* for messages that we don't deal with */
-    return DefWindowProc (hwnd, message, wParam, lParam);
-}
+    case WM_DESTROY:
+        PostQuitMessage(0);       /* send a WM QUIT to the message queue */
+        break;
+    default:                 /* for messages that we don't deal with */
+        return DefWindowProc (hwnd, message, wParam, lParam);
+    }
 
-return 0;
+    return 0;
 }
